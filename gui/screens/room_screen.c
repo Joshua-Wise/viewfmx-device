@@ -51,31 +51,34 @@ static char g_building_id[32];
 /* Helpers                                                              */
 /* ------------------------------------------------------------------ */
 
-/* Formats ISO 8601 UTC string to "HH:MM AM/PM" using local time.
- * The board will run in the local timezone configured in ESP-IDF;
- * the SDL build follows the host TZ env var.                        */
+/* Formats ISO 8601 UTC string to "h:MM AM/PM" in the host local timezone.
+ * On the ESP32 the local timezone is set via ESP-IDF's POSIX TZ env var
+ * before gui_init() is called; on macOS it follows the system timezone.  */
 static void fmt_time(char *buf, size_t sz, const char *iso)
 {
     if (!iso || !iso[0]) { snprintf(buf, sz, "--:--"); return; }
-    struct tm tm = {0};
-    /* parse "YYYY-MM-DDTHH:MM:SSZ" */
+
+    struct tm utc = {0};
     if (sscanf(iso, "%d-%d-%dT%d:%d:%d",
-               &tm.tm_year, &tm.tm_mon, &tm.tm_mday,
-               &tm.tm_hour, &tm.tm_min, &tm.tm_sec) != 6) {
+               &utc.tm_year, &utc.tm_mon, &utc.tm_mday,
+               &utc.tm_hour, &utc.tm_min, &utc.tm_sec) != 6) {
         snprintf(buf, sz, "--:--");
         return;
     }
-    tm.tm_year -= 1900;
-    tm.tm_mon  -= 1;
-    tm.tm_isdst = -1;
-    time_t t = mktime(&tm);  /* converts from local; we want UTC→local */
-    /* mktime treats tm as local, but iso is UTC. Adjust: */
-    /* Use gmtime to get the UTC struct, then format directly. */
-    /* Simpler: use strptime + timegm on platforms that have it.
-     * Here we use a portable approach: re-parse after mktime gives us offset. */
-    (void)t;
-    /* Portable fallback: display in 24h UTC */
-    snprintf(buf, sz, "%02d:%02d", tm.tm_hour, tm.tm_min);
+    utc.tm_year -= 1900;
+    utc.tm_mon  -= 1;
+
+    /* timegm() treats the struct as UTC and returns a UTC epoch.
+     * It is available on macOS and glibc; on ESP-IDF use a shim if needed. */
+    time_t t = timegm(&utc);
+    if (t == (time_t)-1) { snprintf(buf, sz, "--:--"); return; }
+
+    struct tm local;
+    localtime_r(&t, &local);
+    strftime(buf, sz, "%I:%M %p", &local);
+
+    /* Strip leading zero from hour (e.g. "09:30 AM" -> "9:30 AM") */
+    if (buf[0] == '0') memmove(buf, buf + 1, sz - 1);
 }
 
 /* ------------------------------------------------------------------ */
