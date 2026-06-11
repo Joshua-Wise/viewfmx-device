@@ -181,15 +181,15 @@ void room_screen_create(ViewFMX_DataProvider *provider,
     lv_obj_set_style_radius(header, 0, 0);
 
     lbl_room_name = lv_label_create(header);
-    lv_obj_set_style_text_font(lbl_room_name, &lv_font_montserrat_24, 0);
+    lv_obj_set_style_text_font(lbl_room_name, &lv_font_montserrat_40, 0);
     lv_obj_set_style_text_color(lbl_room_name, lv_color_hex(0x111827), 0);
     lv_label_set_text(lbl_room_name, "Loading...");
-    lv_obj_align(lbl_room_name, LV_ALIGN_LEFT_MID, 12, -10);
+    lv_obj_align(lbl_room_name, LV_ALIGN_LEFT_MID, 12, -12);
 
     lbl_status_badge = lv_label_create(header);
     lv_obj_set_style_text_font(lbl_status_badge, &lv_font_montserrat_16, 0);
     lv_label_set_text(lbl_status_badge, "");
-    lv_obj_align(lbl_status_badge, LV_ALIGN_LEFT_MID, 12, 14);
+    lv_obj_align(lbl_status_badge, LV_ALIGN_LEFT_MID, 12, 22);
 
     btn_refresh = lv_btn_create(header);
     lv_obj_set_size(btn_refresh, 100, 40);
@@ -210,7 +210,7 @@ void room_screen_create(ViewFMX_DataProvider *provider,
     lv_obj_set_flex_flow(panel_current, LV_FLEX_FLOW_COLUMN);
 
     lv_obj_t *lbl_cur_hdr = lv_label_create(panel_current);
-    lv_obj_set_style_text_font(lbl_cur_hdr, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_font(lbl_cur_hdr, &lv_font_montserrat_24, 0);
     lv_obj_set_style_text_color(lbl_cur_hdr, lv_color_hex(0xD1D5DB), 0);
     lv_label_set_text(lbl_cur_hdr, "Current meeting");
 
@@ -259,20 +259,20 @@ void room_screen_create(ViewFMX_DataProvider *provider,
     lv_obj_set_flex_flow(panel_upcoming, LV_FLEX_FLOW_COLUMN);
 
     lv_obj_t *lbl_up_hdr = lv_label_create(panel_upcoming);
-    lv_obj_set_style_text_font(lbl_up_hdr, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_font(lbl_up_hdr, &lv_font_montserrat_24, 0);
     lv_obj_set_style_text_color(lbl_up_hdr, lv_color_hex(0xE5E7EB), 0);
     lv_label_set_text(lbl_up_hdr, "Upcoming");
 
     for (int i = 0; i < VIEWFMX_MAX_UPCOMING; i++) {
         lbl_upcoming[i] = lv_label_create(panel_upcoming);
-        lv_obj_set_style_text_font(lbl_upcoming[i], &lv_font_montserrat_16, 0);
+        lv_obj_set_style_text_font(lbl_upcoming[i], &lv_font_montserrat_20, 0);
         lv_obj_set_style_text_color(lbl_upcoming[i], CLR_WHITE, 0);
         lv_label_set_long_mode(lbl_upcoming[i], LV_LABEL_LONG_DOT);
         lv_obj_set_width(lbl_upcoming[i], 400);
         lv_label_set_text(lbl_upcoming[i], "");
 
         lbl_upcoming_time[i] = lv_label_create(panel_upcoming);
-        lv_obj_set_style_text_font(lbl_upcoming_time[i], &lv_font_montserrat_14, 0);
+        lv_obj_set_style_text_font(lbl_upcoming_time[i], &lv_font_montserrat_16, 0);
         lv_obj_set_style_text_color(lbl_upcoming_time[i], lv_color_hex(0xD1D5DB), 0);
         lv_label_set_text(lbl_upcoming_time[i], "");
     }
