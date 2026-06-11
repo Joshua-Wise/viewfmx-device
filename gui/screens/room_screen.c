@@ -10,30 +10,36 @@ time_t timegm(struct tm *tm);
 #endif
 
 /* ------------------------------------------------------------------ */
-/* Widget handles                                                        */
+/* Widget handles                                                       */
 /* ------------------------------------------------------------------ */
 
 static lv_obj_t *g_screen;
 
 /* Header */
 static lv_obj_t *lbl_room_name;
-static lv_obj_t *lbl_status_badge;
-
-/* Current meeting panel */
-static lv_obj_t *panel_current;
-static lv_obj_t *lbl_cur_title;
-static lv_obj_t *lbl_cur_time;
-static lv_obj_t *lbl_cur_remaining;
-
-/* Upcoming panel */
-static lv_obj_t *panel_upcoming;
-static lv_obj_t *lbl_upcoming[VIEWFMX_MAX_UPCOMING];
-static lv_obj_t *lbl_upcoming_time[VIEWFMX_MAX_UPCOMING];
-
-/* Buttons */
 static lv_obj_t *btn_refresh;
+
+/* Left panel: current status */
+static lv_obj_t *panel_current;
+static lv_obj_t *lbl_cur_hdr;        /* "Current meeting" (hidden when free) */
+static lv_obj_t *lbl_cur_title;      /* meeting title, or "Available"        */
+static lv_obj_t *lbl_cur_time;       /* "Wed Jun 11  1:00 PM - 4:00 PM"      */
+static lv_obj_t *lbl_cur_remaining;  /* "85 min left"                        */
 static lv_obj_t *btn_book_30;
 static lv_obj_t *btn_book_60;
+
+/* Right panel: next meeting */
+static lv_obj_t *panel_next;
+static lv_obj_t *lbl_next_title;
+static lv_obj_t *lbl_next_date;
+static lv_obj_t *lbl_next_time;
+
+/* Bottom strip: meetings after the next one */
+#define BOTTOM_COLS 4
+static lv_obj_t *panel_bottom;
+static lv_obj_t *lbl_bot_title[BOTTOM_COLS];
+static lv_obj_t *lbl_bot_date[BOTTOM_COLS];
+static lv_obj_t *lbl_bot_time[BOTTOM_COLS];
 
 /* Provider reference kept for button callbacks */
 static ViewFMX_DataProvider *g_provider;
@@ -41,19 +47,24 @@ static char g_resource_id[32];
 static char g_building_id[32];
 
 /* ------------------------------------------------------------------ */
-/* Colour palette (mirrors iPad grey theme)                             */
+/* Colour palette (mirrors the viewFMX web app)                         */
 /* ------------------------------------------------------------------ */
 
-#define CLR_BG          lv_color_hex(0x4B5563)   /* gray-600 */
-#define CLR_PANEL_BUSY  lv_color_hex(0x374151)   /* gray-700 */
-#define CLR_PANEL_FREE  lv_color_hex(0x6B7280)   /* gray-500 */
-#define CLR_HEADER      lv_color_hex(0xD1D5DB)   /* gray-300 */
+#define CLR_LIGHT       lv_color_hex(0xD1D5DB)   /* header / bottom strip */
+#define CLR_PANEL_DARK  lv_color_hex(0x475569)   /* current-status panel  */
+#define CLR_PANEL_MED   lv_color_hex(0x6B7280)   /* next-meeting panel    */
+#define CLR_TEXT_DARK   lv_color_hex(0x111827)
+#define CLR_TEXT_MUTED  lv_color_hex(0x4B5563)   /* on light backgrounds  */
+#define CLR_TEXT_SOFT   lv_color_hex(0xD1D5DB)   /* on dark backgrounds   */
 #define CLR_WHITE       lv_color_hex(0xFFFFFF)
-#define CLR_GREEN       lv_color_hex(0x22C55E)
-#define CLR_RED         lv_color_hex(0xEF4444)
+#define CLR_BLUE        lv_color_hex(0x3B82F6)
+
+#define HEADER_H  96
+#define BOTTOM_H  150
+#define PANEL_H   (600 - HEADER_H - BOTTOM_H)
 
 /* ------------------------------------------------------------------ */
-/* Helpers                                                              */
+/* Time helpers                                                         */
 /* ------------------------------------------------------------------ */
 
 /* Parses an ISO 8601 UTC string into local broken-down time.
@@ -82,7 +93,7 @@ static bool iso_to_local(const char *iso, struct tm *local)
     return true;
 }
 
-/* "h:MM AM/PM" */
+/* "3:30 PM" */
 static void fmt_time(char *buf, size_t sz, const char *iso)
 {
     struct tm local;
@@ -94,20 +105,29 @@ static void fmt_time(char *buf, size_t sz, const char *iso)
     if (buf[0] == '0') memmove(buf, buf + 1, sz - 1);
 }
 
-/* "Wed Jun 11, 3:30 PM" — for upcoming meetings, which may be days out. */
-static void fmt_datetime(char *buf, size_t sz, const char *iso)
+/* "Wed Jun 11" */
+static void fmt_date(char *buf, size_t sz, const char *iso)
 {
     struct tm local;
-    if (!iso_to_local(iso, &local)) { snprintf(buf, sz, "--:--"); return; }
+    if (!iso_to_local(iso, &local)) { snprintf(buf, sz, "--"); return; }
 
     char dow_mon[16];
     strftime(dow_mon, sizeof(dow_mon), "%a %b", &local);
+    snprintf(buf, sz, "%s %d", dow_mon, local.tm_mday);
+}
 
-    char t[16];
-    strftime(t, sizeof(t), "%I:%M %p", &local);
-    const char *tp = (t[0] == '0') ? t + 1 : t;
+/* "1:00 PM - 4:00 PM" */
+static void fmt_range(char *buf, size_t sz, const char *start_iso, const char *end_iso)
+{
+    char ts[16], te[16];
+    fmt_time(ts, sizeof(ts), start_iso);
+    fmt_time(te, sizeof(te), end_iso);
+    snprintf(buf, sz, "%s - %s", ts, te);
+}
 
-    snprintf(buf, sz, "%s %d, %s", dow_mon, local.tm_mday, tp);
+static const char *meeting_title(const ViewFMX_Meeting *m)
+{
+    return m->title[0] ? m->title : "Reserved";
 }
 
 /* ------------------------------------------------------------------ */
@@ -140,26 +160,41 @@ static void book_cb(lv_event_t *e)
 /* ------------------------------------------------------------------ */
 
 /*
- * Layout (1024 x 600):
+ * Layout (1024 x 600), mirroring the viewFMX web app:
  *
- *  ┌─────────────────────────── HEADER (h=80) ──────────────────────────┐
- *  │  [Room Name]                              [Refresh]                 │
- *  │  [● FREE / ● BUSY]                                                  │
- *  ├────────────────────────────────────────────────────────────────────┤
- *  │ CURRENT PANEL (w=420, full height below header)                     │
- *  │   "Current meeting" / "Available"                                   │
- *  │   Title                                                             │
- *  │   HH:MM – HH:MM          (X min remaining)                         │
- *  │                                                                     │
- *  │   [Book 30 min]  [Book 60 min]   (shown only when free)            │
- *  ├────────────────────────────────────────────────────────────────────┤
- *  │ UPCOMING PANEL (w=604, right side)                                  │
- *  │   "Upcoming"                                                        │
- *  │   Title1   HH:MM                                                    │
- *  │   Title2   HH:MM                                                    │
- *  │   …                                                                 │
- *  └────────────────────────────────────────────────────────────────────┘
+ *  ┌──────────────────────── HEADER (light, h=96) ──────────────────────┐
+ *  │  Room Name                                                  (⟳)    │
+ *  ├──────────────── LEFT (dark, 512) ──┬───────── RIGHT (med, 512) ────┤
+ *  │  Current meeting                   │  Next meeting                 │
+ *  │  Title                             │  Title                        │
+ *  │  Wed Jun 11  1:00 PM - 4:00 PM     │  Wed Jun 11                   │
+ *  │  85 min left                       │  2:45 PM - 3:45 PM            │
+ *  │  [Book 30] [Book 60] (when free)   │                               │
+ *  ├──────────────────── BOTTOM STRIP (light, h=150) ───────────────────┤
+ *  │  Title         Title         Title         Title                   │
+ *  │  date/time     date/time     date/time     date/time               │
+ *  └─────────────────────────────────────────────────────────────────────┘
  */
+
+static lv_obj_t *make_panel(lv_obj_t *parent, lv_color_t color)
+{
+    lv_obj_t *p = lv_obj_create(parent);
+    lv_obj_set_style_bg_color(p, color, 0);
+    lv_obj_set_style_border_width(p, 0, 0);
+    lv_obj_set_style_radius(p, 0, 0);
+    lv_obj_set_style_pad_all(p, 24, 0);
+    lv_obj_clear_flag(p, LV_OBJ_FLAG_SCROLLABLE);
+    return p;
+}
+
+static lv_obj_t *make_label(lv_obj_t *parent, const lv_font_t *font, lv_color_t color)
+{
+    lv_obj_t *l = lv_label_create(parent);
+    lv_obj_set_style_text_font(l, font, 0);
+    lv_obj_set_style_text_color(l, color, 0);
+    lv_label_set_text(l, "");
+    return l;
+}
 
 void room_screen_create(ViewFMX_DataProvider *provider,
                         const char *resource_id,
@@ -170,111 +205,99 @@ void room_screen_create(ViewFMX_DataProvider *provider,
     strncpy(g_building_id, building_id, sizeof(g_building_id) - 1);
 
     g_screen = lv_obj_create(NULL);
-    lv_obj_set_style_bg_color(g_screen, CLR_BG, 0);
+    lv_obj_set_style_bg_color(g_screen, CLR_PANEL_DARK, 0);
 
     /* ---- Header ---- */
-    lv_obj_t *header = lv_obj_create(g_screen);
-    lv_obj_set_size(header, 1024, 80);
+    lv_obj_t *header = make_panel(g_screen, CLR_LIGHT);
+    lv_obj_set_size(header, 1024, HEADER_H);
     lv_obj_align(header, LV_ALIGN_TOP_LEFT, 0, 0);
-    lv_obj_set_style_bg_color(header, CLR_HEADER, 0);
-    lv_obj_set_style_border_width(header, 0, 0);
-    lv_obj_set_style_radius(header, 0, 0);
 
-    lbl_room_name = lv_label_create(header);
-    lv_obj_set_style_text_font(lbl_room_name, &lv_font_montserrat_40, 0);
-    lv_obj_set_style_text_color(lbl_room_name, lv_color_hex(0x111827), 0);
+    lbl_room_name = make_label(header, &lv_font_montserrat_40, CLR_TEXT_DARK);
     lv_label_set_text(lbl_room_name, "Loading...");
-    lv_obj_align(lbl_room_name, LV_ALIGN_LEFT_MID, 12, -12);
-
-    lbl_status_badge = lv_label_create(header);
-    lv_obj_set_style_text_font(lbl_status_badge, &lv_font_montserrat_16, 0);
-    lv_label_set_text(lbl_status_badge, "");
-    lv_obj_align(lbl_status_badge, LV_ALIGN_LEFT_MID, 12, 22);
+    lv_obj_align(lbl_room_name, LV_ALIGN_LEFT_MID, 4, 2);
 
     btn_refresh = lv_btn_create(header);
-    lv_obj_set_size(btn_refresh, 100, 40);
-    lv_obj_align(btn_refresh, LV_ALIGN_RIGHT_MID, -12, 0);
+    lv_obj_set_size(btn_refresh, 56, 48);
+    lv_obj_set_style_bg_color(btn_refresh, CLR_BLUE, 0);
+    lv_obj_set_style_radius(btn_refresh, 24, 0);
+    lv_obj_align(btn_refresh, LV_ALIGN_RIGHT_MID, -4, 2);
     lv_obj_add_event_cb(btn_refresh, refresh_cb, LV_EVENT_CLICKED, NULL);
-    lv_obj_t *lbl_ref = lv_label_create(btn_refresh);
-    lv_label_set_text(lbl_ref, "Refresh");
+    lv_obj_t *lbl_ref = make_label(btn_refresh, &lv_font_montserrat_24, CLR_WHITE);
+    lv_label_set_text(lbl_ref, LV_SYMBOL_REFRESH);
     lv_obj_center(lbl_ref);
 
-    /* ---- Current meeting panel (left, 420 wide) ---- */
-    panel_current = lv_obj_create(g_screen);
-    lv_obj_set_size(panel_current, 420, 520);
-    lv_obj_align(panel_current, LV_ALIGN_TOP_LEFT, 0, 80);
-    lv_obj_set_style_bg_color(panel_current, CLR_PANEL_BUSY, 0);
-    lv_obj_set_style_border_width(panel_current, 0, 0);
-    lv_obj_set_style_radius(panel_current, 0, 0);
-    lv_obj_set_style_pad_all(panel_current, 24, 0);
+    /* ---- Left: current status ---- */
+    panel_current = make_panel(g_screen, CLR_PANEL_DARK);
+    lv_obj_set_size(panel_current, 512, PANEL_H);
+    lv_obj_align(panel_current, LV_ALIGN_TOP_LEFT, 0, HEADER_H);
     lv_obj_set_flex_flow(panel_current, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(panel_current, 10, 0);
 
-    lv_obj_t *lbl_cur_hdr = lv_label_create(panel_current);
-    lv_obj_set_style_text_font(lbl_cur_hdr, &lv_font_montserrat_24, 0);
-    lv_obj_set_style_text_color(lbl_cur_hdr, lv_color_hex(0xD1D5DB), 0);
-    lv_label_set_text(lbl_cur_hdr, "Current meeting");
-
-    lbl_cur_title = lv_label_create(panel_current);
-    lv_obj_set_style_text_font(lbl_cur_title, &lv_font_montserrat_24, 0);
-    lv_obj_set_style_text_color(lbl_cur_title, CLR_WHITE, 0);
+    lbl_cur_hdr = make_label(panel_current, &lv_font_montserrat_24, CLR_TEXT_SOFT);
+    lbl_cur_title = make_label(panel_current, &lv_font_montserrat_32, CLR_WHITE);
     lv_label_set_long_mode(lbl_cur_title, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(lbl_cur_title, 370);
-    lv_label_set_text(lbl_cur_title, "");
+    lv_obj_set_width(lbl_cur_title, 464);
+    lbl_cur_time = make_label(panel_current, &lv_font_montserrat_20, CLR_TEXT_SOFT);
+    lbl_cur_remaining = make_label(panel_current, &lv_font_montserrat_40, CLR_WHITE);
+    lv_obj_set_style_pad_top(lbl_cur_remaining, 12, 0);
 
-    lbl_cur_time = lv_label_create(panel_current);
-    lv_obj_set_style_text_font(lbl_cur_time, &lv_font_montserrat_16, 0);
-    lv_obj_set_style_text_color(lbl_cur_time, lv_color_hex(0xD1D5DB), 0);
-    lv_label_set_text(lbl_cur_time, "");
+    lv_obj_t *btn_row = lv_obj_create(panel_current);
+    lv_obj_set_size(btn_row, 464, 64);
+    lv_obj_set_style_bg_opa(btn_row, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(btn_row, 0, 0);
+    lv_obj_set_style_pad_all(btn_row, 0, 0);
+    lv_obj_clear_flag(btn_row, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_flex_flow(btn_row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_style_pad_column(btn_row, 16, 0);
 
-    lbl_cur_remaining = lv_label_create(panel_current);
-    lv_obj_set_style_text_font(lbl_cur_remaining, &lv_font_montserrat_32, 0);
-    lv_obj_set_style_text_color(lbl_cur_remaining, CLR_WHITE, 0);
-    lv_label_set_text(lbl_cur_remaining, "");
-
-    /* Book Now buttons (shown when free) */
-    btn_book_30 = lv_btn_create(panel_current);
-    lv_obj_set_size(btn_book_30, 160, 48);
-    lv_obj_set_style_bg_color(btn_book_30, lv_color_hex(0x3B82F6), 0);
+    btn_book_30 = lv_btn_create(btn_row);
+    lv_obj_set_size(btn_book_30, 170, 56);
+    lv_obj_set_style_bg_color(btn_book_30, CLR_BLUE, 0);
     lv_obj_add_event_cb(btn_book_30, book_cb, LV_EVENT_CLICKED, (void *)(intptr_t)30);
-    lv_obj_t *lbl30 = lv_label_create(btn_book_30);
+    lv_obj_t *lbl30 = make_label(btn_book_30, &lv_font_montserrat_20, CLR_WHITE);
     lv_label_set_text(lbl30, "Book 30 min");
     lv_obj_center(lbl30);
 
-    btn_book_60 = lv_btn_create(panel_current);
-    lv_obj_set_size(btn_book_60, 160, 48);
-    lv_obj_set_style_bg_color(btn_book_60, lv_color_hex(0x3B82F6), 0);
+    btn_book_60 = lv_btn_create(btn_row);
+    lv_obj_set_size(btn_book_60, 170, 56);
+    lv_obj_set_style_bg_color(btn_book_60, CLR_BLUE, 0);
     lv_obj_add_event_cb(btn_book_60, book_cb, LV_EVENT_CLICKED, (void *)(intptr_t)60);
-    lv_obj_t *lbl60 = lv_label_create(btn_book_60);
+    lv_obj_t *lbl60 = make_label(btn_book_60, &lv_font_montserrat_20, CLR_WHITE);
     lv_label_set_text(lbl60, "Book 60 min");
     lv_obj_center(lbl60);
 
-    /* ---- Upcoming panel (right, 604 wide) ---- */
-    panel_upcoming = lv_obj_create(g_screen);
-    lv_obj_set_size(panel_upcoming, 604, 520);
-    lv_obj_align(panel_upcoming, LV_ALIGN_TOP_RIGHT, 0, 80);
-    lv_obj_set_style_bg_color(panel_upcoming, CLR_PANEL_FREE, 0);
-    lv_obj_set_style_border_width(panel_upcoming, 0, 0);
-    lv_obj_set_style_radius(panel_upcoming, 0, 0);
-    lv_obj_set_style_pad_all(panel_upcoming, 24, 0);
-    lv_obj_set_flex_flow(panel_upcoming, LV_FLEX_FLOW_COLUMN);
+    /* ---- Right: next meeting ---- */
+    panel_next = make_panel(g_screen, CLR_PANEL_MED);
+    lv_obj_set_size(panel_next, 512, PANEL_H);
+    lv_obj_align(panel_next, LV_ALIGN_TOP_LEFT, 512, HEADER_H);
+    lv_obj_set_flex_flow(panel_next, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(panel_next, 10, 0);
 
-    lv_obj_t *lbl_up_hdr = lv_label_create(panel_upcoming);
-    lv_obj_set_style_text_font(lbl_up_hdr, &lv_font_montserrat_24, 0);
-    lv_obj_set_style_text_color(lbl_up_hdr, lv_color_hex(0xE5E7EB), 0);
-    lv_label_set_text(lbl_up_hdr, "Upcoming");
+    lv_obj_t *lbl_next_hdr = make_label(panel_next, &lv_font_montserrat_24, CLR_TEXT_SOFT);
+    lv_label_set_text(lbl_next_hdr, "Next meeting");
+    lbl_next_title = make_label(panel_next, &lv_font_montserrat_32, CLR_WHITE);
+    lv_label_set_long_mode(lbl_next_title, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(lbl_next_title, 464);
+    lbl_next_date = make_label(panel_next, &lv_font_montserrat_20, CLR_TEXT_SOFT);
+    lbl_next_time = make_label(panel_next, &lv_font_montserrat_24, CLR_WHITE);
 
-    for (int i = 0; i < VIEWFMX_MAX_UPCOMING; i++) {
-        lbl_upcoming[i] = lv_label_create(panel_upcoming);
-        lv_obj_set_style_text_font(lbl_upcoming[i], &lv_font_montserrat_20, 0);
-        lv_obj_set_style_text_color(lbl_upcoming[i], CLR_WHITE, 0);
-        lv_label_set_long_mode(lbl_upcoming[i], LV_LABEL_LONG_DOT);
-        lv_obj_set_width(lbl_upcoming[i], 400);
-        lv_label_set_text(lbl_upcoming[i], "");
+    /* ---- Bottom strip: later meetings ---- */
+    panel_bottom = make_panel(g_screen, CLR_LIGHT);
+    lv_obj_set_size(panel_bottom, 1024, BOTTOM_H);
+    lv_obj_align(panel_bottom, LV_ALIGN_TOP_LEFT, 0, HEADER_H + PANEL_H);
 
-        lbl_upcoming_time[i] = lv_label_create(panel_upcoming);
-        lv_obj_set_style_text_font(lbl_upcoming_time[i], &lv_font_montserrat_16, 0);
-        lv_obj_set_style_text_color(lbl_upcoming_time[i], lv_color_hex(0xD1D5DB), 0);
-        lv_label_set_text(lbl_upcoming_time[i], "");
+    for (int i = 0; i < BOTTOM_COLS; i++) {
+        int x = i * 244;
+        lbl_bot_title[i] = make_label(panel_bottom, &lv_font_montserrat_16, CLR_TEXT_DARK);
+        lv_label_set_long_mode(lbl_bot_title[i], LV_LABEL_LONG_DOT);
+        lv_obj_set_width(lbl_bot_title[i], 220);
+        lv_obj_align(lbl_bot_title[i], LV_ALIGN_TOP_LEFT, x, 4);
+
+        lbl_bot_date[i] = make_label(panel_bottom, &lv_font_montserrat_14, CLR_TEXT_MUTED);
+        lv_obj_align(lbl_bot_date[i], LV_ALIGN_TOP_LEFT, x, 36);
+
+        lbl_bot_time[i] = make_label(panel_bottom, &lv_font_montserrat_14, CLR_TEXT_MUTED);
+        lv_obj_align(lbl_bot_time[i], LV_ALIGN_TOP_LEFT, x, 60);
     }
 
     lv_screen_load(g_screen);
@@ -286,39 +309,29 @@ void room_screen_create(ViewFMX_DataProvider *provider,
 
 void room_screen_update(const ViewFMX_RoomData *data)
 {
-    /* Room name */
     lv_label_set_text(lbl_room_name, data->room_name[0] ? data->room_name : "Unknown Room");
 
-    /* Status badge: only shown when free — when busy, the current
-     * meeting panel already says it. */
-    if (data->is_busy) {
-        lv_label_set_text(lbl_status_badge, "");
-        lv_obj_set_style_bg_color(panel_current, CLR_PANEL_BUSY, 0);
-    } else {
-        lv_label_set_text(lbl_status_badge, "* AVAILABLE");
-        lv_obj_set_style_text_color(lbl_status_badge, CLR_GREEN, 0);
-        lv_obj_set_style_bg_color(panel_current, CLR_PANEL_FREE, 0);
-    }
-
-    /* Current meeting */
+    /* Left panel: current meeting, or availability + booking */
     if (data->has_current) {
         const ViewFMX_Meeting *m = &data->current;
-        lv_label_set_text(lbl_cur_title, m->title[0] ? m->title : "Reserved");
 
-        char ts[16], te[16];
-        fmt_time(ts, sizeof(ts), m->start_time);
-        fmt_time(te, sizeof(te), m->end_time);
-        char timebuf[40];
-        snprintf(timebuf, sizeof(timebuf), "%s - %s", ts, te);
-        lv_label_set_text(lbl_cur_time, timebuf);
+        lv_label_set_text(lbl_cur_hdr, "Current meeting");
+        lv_label_set_text(lbl_cur_title, meeting_title(m));
 
-        char rembuf[32];
-        snprintf(rembuf, sizeof(rembuf), "%d min left", m->minutes_remaining);
-        lv_label_set_text(lbl_cur_remaining, rembuf);
+        char date[24], range[40], buf[72];
+        fmt_date(date, sizeof(date), m->start_time);
+        fmt_range(range, sizeof(range), m->start_time, m->end_time);
+        snprintf(buf, sizeof(buf), "%s   %s", date, range);
+        lv_label_set_text(lbl_cur_time, buf);
+
+        char rem[32];
+        snprintf(rem, sizeof(rem), "%d min left", m->minutes_remaining);
+        lv_label_set_text(lbl_cur_remaining, rem);
 
         lv_obj_add_flag(btn_book_30, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(btn_book_60, LV_OBJ_FLAG_HIDDEN);
     } else {
+        lv_label_set_text(lbl_cur_hdr, "");
         lv_label_set_text(lbl_cur_title, "Available");
         lv_label_set_text(lbl_cur_time, "");
         lv_label_set_text(lbl_cur_remaining, "");
@@ -326,18 +339,38 @@ void room_screen_update(const ViewFMX_RoomData *data)
         lv_obj_remove_flag(btn_book_60, LV_OBJ_FLAG_HIDDEN);
     }
 
-    /* Upcoming */
-    for (int i = 0; i < VIEWFMX_MAX_UPCOMING; i++) {
-        if (i < data->upcoming_count) {
-            const ViewFMX_Meeting *m = &data->upcoming[i];
-            lv_label_set_text(lbl_upcoming[i], m->title[0] ? m->title : "Reserved");
+    /* Right panel: first upcoming meeting */
+    if (data->upcoming_count > 0) {
+        const ViewFMX_Meeting *m = &data->upcoming[0];
+        char date[24], range[40];
+        fmt_date(date, sizeof(date), m->start_time);
+        fmt_range(range, sizeof(range), m->start_time, m->end_time);
 
-            char ts[40];
-            fmt_datetime(ts, sizeof(ts), m->start_time);
-            lv_label_set_text(lbl_upcoming_time[i], ts);
+        lv_label_set_text(lbl_next_title, meeting_title(m));
+        lv_label_set_text(lbl_next_date, date);
+        lv_label_set_text(lbl_next_time, range);
+    } else {
+        lv_label_set_text(lbl_next_title, "Nothing scheduled");
+        lv_label_set_text(lbl_next_date, "");
+        lv_label_set_text(lbl_next_time, "");
+    }
+
+    /* Bottom strip: meetings after the next one */
+    for (int i = 0; i < BOTTOM_COLS; i++) {
+        int idx = i + 1;
+        if (idx < data->upcoming_count) {
+            const ViewFMX_Meeting *m = &data->upcoming[idx];
+            char date[24], range[40];
+            fmt_date(date, sizeof(date), m->start_time);
+            fmt_range(range, sizeof(range), m->start_time, m->end_time);
+
+            lv_label_set_text(lbl_bot_title[i], meeting_title(m));
+            lv_label_set_text(lbl_bot_date[i], date);
+            lv_label_set_text(lbl_bot_time[i], range);
         } else {
-            lv_label_set_text(lbl_upcoming[i], "");
-            lv_label_set_text(lbl_upcoming_time[i], "");
+            lv_label_set_text(lbl_bot_title[i], "");
+            lv_label_set_text(lbl_bot_date[i], "");
+            lv_label_set_text(lbl_bot_time[i], "");
         }
     }
 }
