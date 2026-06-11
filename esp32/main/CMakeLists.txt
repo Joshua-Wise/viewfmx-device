@@ -5,6 +5,8 @@ idf_component_register(
         "app_main.c"
         "${REPO_ROOT}/gui/gui.c"
         "${REPO_ROOT}/gui/screens/room_screen.c"
+        "${REPO_ROOT}/gui/screens/settings_overlay.c"
+        "${REPO_ROOT}/gui/assets/logo.c"
         "${REPO_ROOT}/data/mock_provider.c"
         "${REPO_ROOT}/data/http_provider_parse.c"
         "${REPO_ROOT}/data/http_provider_esp.c"
@@ -12,6 +14,7 @@ idf_component_register(
         "${REPO_ROOT}/platform/esp32/display.c"
         "${REPO_ROOT}/platform/esp32/input.c"
         "${REPO_ROOT}/platform/esp32/net.c"
+        "${REPO_ROOT}/platform/esp32/sysinfo.c"
     INCLUDE_DIRS
         "."
         "${REPO_ROOT}"

@@ -66,12 +66,15 @@ set(SOURCES
     vendor/cjson/cJSON.c
     gui/gui.c
     gui/screens/room_screen.c
+    gui/screens/settings_overlay.c
+    gui/assets/logo.c
     data/mock_provider.c
     data/http_provider.c
     data/http_provider_parse.c
     platform/sdl/display.c
     platform/sdl/input.c
     platform/sdl/net.c
+    platform/sdl/sysinfo.c
 )
 
 add_executable(viewfmx_device ${SOURCES})

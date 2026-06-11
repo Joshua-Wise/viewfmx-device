@@ -1,4 +1,5 @@
 #include "room_screen.h"
+#include "settings_overlay.h"
 #include <lvgl.h>
 #include <stdio.h>
 #include <string.h>
@@ -17,14 +18,14 @@ static lv_obj_t *g_screen;
 
 /* Header */
 static lv_obj_t *lbl_room_name;
-static lv_obj_t *btn_refresh;
+
+LV_IMAGE_DECLARE(img_district_logo);
 
 /* Left panel: current status */
 static lv_obj_t *panel_current;
 static lv_obj_t *lbl_cur_hdr;        /* "Current meeting" (hidden when free) */
 static lv_obj_t *lbl_cur_title;      /* meeting title, or "Available"        */
 static lv_obj_t *lbl_cur_time;       /* "Wed Jun 11  1:00 PM - 4:00 PM"      */
-static lv_obj_t *lbl_cur_remaining;  /* "85 min left"                        */
 static lv_obj_t *btn_book_30;
 static lv_obj_t *btn_book_60;
 
@@ -134,13 +135,10 @@ static const char *meeting_title(const ViewFMX_Meeting *m)
 /* Button event callbacks                                               */
 /* ------------------------------------------------------------------ */
 
-static void refresh_cb(lv_event_t *e)
+static void logo_cb(lv_event_t *e)
 {
     (void)e;
-    ViewFMX_RoomData data = {0};
-    if (g_provider->fetch_status(g_provider->ctx, &data) == 0) {
-        room_screen_update(&data);
-    }
+    settings_overlay_open(g_provider, g_resource_id, g_building_id);
 }
 
 static void book_cb(lv_event_t *e)
@@ -216,15 +214,12 @@ void room_screen_create(ViewFMX_DataProvider *provider,
     lv_label_set_text(lbl_room_name, "Loading...");
     lv_obj_align(lbl_room_name, LV_ALIGN_LEFT_MID, 4, 2);
 
-    btn_refresh = lv_btn_create(header);
-    lv_obj_set_size(btn_refresh, 56, 48);
-    lv_obj_set_style_bg_color(btn_refresh, CLR_BLUE, 0);
-    lv_obj_set_style_radius(btn_refresh, 24, 0);
-    lv_obj_align(btn_refresh, LV_ALIGN_RIGHT_MID, -4, 2);
-    lv_obj_add_event_cb(btn_refresh, refresh_cb, LV_EVENT_CLICKED, NULL);
-    lv_obj_t *lbl_ref = make_label(btn_refresh, &lv_font_montserrat_24, CLR_WHITE);
-    lv_label_set_text(lbl_ref, LV_SYMBOL_REFRESH);
-    lv_obj_center(lbl_ref);
+    lv_obj_t *logo = lv_image_create(header);
+    lv_image_set_src(logo, &img_district_logo);
+    lv_obj_align(logo, LV_ALIGN_RIGHT_MID, 0, 0);
+    lv_obj_add_flag(logo, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_ext_click_area(logo, 16);
+    lv_obj_add_event_cb(logo, logo_cb, LV_EVENT_CLICKED, NULL);
 
     /* ---- Left: current status ---- */
     panel_current = make_panel(g_screen, CLR_PANEL_DARK);
@@ -238,8 +233,6 @@ void room_screen_create(ViewFMX_DataProvider *provider,
     lv_label_set_long_mode(lbl_cur_title, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(lbl_cur_title, 464);
     lbl_cur_time = make_label(panel_current, &lv_font_montserrat_20, CLR_TEXT_SOFT);
-    lbl_cur_remaining = make_label(panel_current, &lv_font_montserrat_40, CLR_WHITE);
-    lv_obj_set_style_pad_top(lbl_cur_remaining, 12, 0);
 
     lv_obj_t *btn_row = lv_obj_create(panel_current);
     lv_obj_set_size(btn_row, 464, 64);
@@ -324,17 +317,12 @@ void room_screen_update(const ViewFMX_RoomData *data)
         snprintf(buf, sizeof(buf), "%s   %s", date, range);
         lv_label_set_text(lbl_cur_time, buf);
 
-        char rem[32];
-        snprintf(rem, sizeof(rem), "%d min left", m->minutes_remaining);
-        lv_label_set_text(lbl_cur_remaining, rem);
-
         lv_obj_add_flag(btn_book_30, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(btn_book_60, LV_OBJ_FLAG_HIDDEN);
     } else {
         lv_label_set_text(lbl_cur_hdr, "");
         lv_label_set_text(lbl_cur_title, "Available");
         lv_label_set_text(lbl_cur_time, "");
-        lv_label_set_text(lbl_cur_remaining, "");
         lv_obj_remove_flag(btn_book_30, LV_OBJ_FLAG_HIDDEN);
         lv_obj_remove_flag(btn_book_60, LV_OBJ_FLAG_HIDDEN);
     }
