@@ -68,6 +68,7 @@ set(SOURCES
     gui/screens/room_screen.c
     data/mock_provider.c
     data/http_provider.c
+    data/http_provider_parse.c
     platform/sdl/display.c
     platform/sdl/input.c
     platform/sdl/net.c
