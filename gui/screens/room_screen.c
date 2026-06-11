@@ -56,19 +56,19 @@ static char g_building_id[32];
 /* Helpers                                                              */
 /* ------------------------------------------------------------------ */
 
-/* Formats ISO 8601 UTC string to "h:MM AM/PM" in the host local timezone.
+/* Parses an ISO 8601 UTC string into local broken-down time.
  * On the ESP32 the local timezone is set via ESP-IDF's POSIX TZ env var
- * before gui_init() is called; on macOS it follows the system timezone.  */
-static void fmt_time(char *buf, size_t sz, const char *iso)
+ * before gui_init() is called; on macOS it follows the system timezone.
+ * Returns false on parse failure. */
+static bool iso_to_local(const char *iso, struct tm *local)
 {
-    if (!iso || !iso[0]) { snprintf(buf, sz, "--:--"); return; }
+    if (!iso || !iso[0]) return false;
 
     struct tm utc = {0};
     if (sscanf(iso, "%d-%d-%dT%d:%d:%d",
                &utc.tm_year, &utc.tm_mon, &utc.tm_mday,
                &utc.tm_hour, &utc.tm_min, &utc.tm_sec) != 6) {
-        snprintf(buf, sz, "--:--");
-        return;
+        return false;
     }
     utc.tm_year -= 1900;
     utc.tm_mon  -= 1;
@@ -76,14 +76,38 @@ static void fmt_time(char *buf, size_t sz, const char *iso)
     /* timegm() treats the struct as UTC and returns a UTC epoch.
      * It is available on macOS and glibc; on ESP-IDF use a shim if needed. */
     time_t t = timegm(&utc);
-    if (t == (time_t)-1) { snprintf(buf, sz, "--:--"); return; }
+    if (t == (time_t)-1) return false;
 
+    localtime_r(&t, local);
+    return true;
+}
+
+/* "h:MM AM/PM" */
+static void fmt_time(char *buf, size_t sz, const char *iso)
+{
     struct tm local;
-    localtime_r(&t, &local);
+    if (!iso_to_local(iso, &local)) { snprintf(buf, sz, "--:--"); return; }
+
     strftime(buf, sz, "%I:%M %p", &local);
 
     /* Strip leading zero from hour (e.g. "09:30 AM" -> "9:30 AM") */
     if (buf[0] == '0') memmove(buf, buf + 1, sz - 1);
+}
+
+/* "Wed Jun 11, 3:30 PM" — for upcoming meetings, which may be days out. */
+static void fmt_datetime(char *buf, size_t sz, const char *iso)
+{
+    struct tm local;
+    if (!iso_to_local(iso, &local)) { snprintf(buf, sz, "--:--"); return; }
+
+    char dow_mon[16];
+    strftime(dow_mon, sizeof(dow_mon), "%a %b", &local);
+
+    char t[16];
+    strftime(t, sizeof(t), "%I:%M %p", &local);
+    const char *tp = (t[0] == '0') ? t + 1 : t;
+
+    snprintf(buf, sz, "%s %d, %s", dow_mon, local.tm_mday, tp);
 }
 
 /* ------------------------------------------------------------------ */
@@ -265,10 +289,10 @@ void room_screen_update(const ViewFMX_RoomData *data)
     /* Room name */
     lv_label_set_text(lbl_room_name, data->room_name[0] ? data->room_name : "Unknown Room");
 
-    /* Status badge */
+    /* Status badge: only shown when free — when busy, the current
+     * meeting panel already says it. */
     if (data->is_busy) {
-        lv_label_set_text(lbl_status_badge, "* BUSY");
-        lv_obj_set_style_text_color(lbl_status_badge, CLR_RED, 0);
+        lv_label_set_text(lbl_status_badge, "");
         lv_obj_set_style_bg_color(panel_current, CLR_PANEL_BUSY, 0);
     } else {
         lv_label_set_text(lbl_status_badge, "* AVAILABLE");
@@ -308,8 +332,8 @@ void room_screen_update(const ViewFMX_RoomData *data)
             const ViewFMX_Meeting *m = &data->upcoming[i];
             lv_label_set_text(lbl_upcoming[i], m->title[0] ? m->title : "Reserved");
 
-            char ts[16];
-            fmt_time(ts, sizeof(ts), m->start_time);
+            char ts[40];
+            fmt_datetime(ts, sizeof(ts), m->start_time);
             lv_label_set_text(lbl_upcoming_time[i], ts);
         } else {
             lv_label_set_text(lbl_upcoming[i], "");
