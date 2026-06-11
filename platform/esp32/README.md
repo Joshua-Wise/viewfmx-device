@@ -5,13 +5,19 @@ capacitive touch). The ESP-IDF project that builds this lives in
 `/esp32` at the repo root; this directory holds only the platform
 driver sources, mirroring `platform/sdl/`.
 
-## Hardware map (JC1060P470C)
+## Hardware map (JC1060P470C_I_W_Y — the Ethernet variant)
+
+> **Warning:** pin maps published for the other JC1060P470C variants do
+> not apply to this board (e.g. GPIO27 is the RS485 transceiver here,
+> not LCD reset). The authoritative references are the vendor schematic
+> and demos in `/JC1060P470C_I_W_Y` (kept out of git; from the seller).
 
 | Function        | Detail                                        |
 |-----------------|-----------------------------------------------|
-| Display         | 7″ 1024×600 IPS, JD9165 controller, 2-lane MIPI-DSI |
-| LCD reset       | GPIO5                                         |
-| Backlight       | GPIO23 (driven as plain GPIO; PWM optional)   |
+| Display         | 7″ 1024×600 IPS, JD9165 controller, 2-lane MIPI-DSI @ 750 Mbps, 52 MHz DPI |
+| LCD reset       | GPIO0 (hardware pulse required after power loss) |
+| LCD init        | Full vendor command table in `display.c` — the JD9165 retains config while powered, so minimal init *appears* to work until the first real power cycle |
+| Backlight       | GPIO23 → MP3202 boost EN (plain GPIO; PWM optional) |
 | MIPI D-PHY power| Internal LDO channel 3 @ 2.5 V                |
 | Touch           | GT911, I2C addr 0x5D                          |
 | Touch I2C       | SDA GPIO7, SCL GPIO8 (400 kHz)                |
