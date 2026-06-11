@@ -279,8 +279,7 @@ void room_screen_update(const ViewFMX_RoomData *data)
     /* Current meeting */
     if (data->has_current) {
         const ViewFMX_Meeting *m = &data->current;
-        const char *title = m->is_private ? "[Private]" : m->title;
-        lv_label_set_text(lbl_cur_title, title);
+        lv_label_set_text(lbl_cur_title, m->title[0] ? m->title : "Reserved");
 
         char ts[16], te[16];
         fmt_time(ts, sizeof(ts), m->start_time);
@@ -307,8 +306,7 @@ void room_screen_update(const ViewFMX_RoomData *data)
     for (int i = 0; i < VIEWFMX_MAX_UPCOMING; i++) {
         if (i < data->upcoming_count) {
             const ViewFMX_Meeting *m = &data->upcoming[i];
-            const char *title = m->is_private ? "[Private]" : m->title;
-            lv_label_set_text(lbl_upcoming[i], title);
+            lv_label_set_text(lbl_upcoming[i], m->title[0] ? m->title : "Reserved");
 
             char ts[16];
             fmt_time(ts, sizeof(ts), m->start_time);

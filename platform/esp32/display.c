@@ -12,6 +12,10 @@
 #include "esp_lvgl_port.h"
 
 #define PIN_BACKLIGHT     23
+/* Panel hardware reset (Guition BSP, CONFIG_BSP_LCD_TYPE_1024_600).
+ * Without this pulse a cold-booted panel never wakes, and the JD9165
+ * driver's ID read spins forever in the DSI HAL (no timeout there). */
+#define PIN_LCD_RESET     27
 
 /* The MIPI D-PHY is powered by internal LDO channel 3 at 2.5 V on ESP32-P4. */
 #define MIPI_PHY_LDO_CHAN 3
@@ -53,9 +57,8 @@ void display_init(int width, int height)
             .dpi_config = &dpi_cfg,
         },
     };
-    /* No LCD reset line on this board (Guition BSP uses GPIO_NUM_NC). */
     esp_lcd_panel_dev_config_t panel_cfg = {
-        .reset_gpio_num = -1,
+        .reset_gpio_num = PIN_LCD_RESET,
         .rgb_ele_order  = LCD_RGB_ELEMENT_ORDER_RGB,
         .bits_per_pixel = 16,
         .vendor_config  = &vendor_cfg,
