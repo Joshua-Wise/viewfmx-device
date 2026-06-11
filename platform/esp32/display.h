@@ -4,3 +4,6 @@
  * Calls lvgl_port_init() internally, which also calls lv_init() —
  * do not call lv_init() separately on this target. */
 void display_init(int width, int height);
+
+/* Backlight brightness 1-100 %, with a smooth hardware fade. */
+void display_set_brightness(int percent);

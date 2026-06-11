@@ -4,3 +4,4 @@ dependencies:
   espressif/esp_lvgl_port: "^2.4.0"
   espressif/esp_lcd_jd9165: "^1.0.1"
   espressif/esp_lcd_touch_gt911: "^1.1.0"
+  espressif/esp_video: "*"

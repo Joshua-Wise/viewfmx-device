@@ -14,6 +14,7 @@
 #include "display.h"
 
 #include "driver/gpio.h"
+#include "driver/ledc.h"
 #include "esp_lcd_jd9165.h"
 #include "esp_lcd_mipi_dsi.h"
 #include "esp_lcd_panel_ops.h"
@@ -179,12 +180,34 @@ void display_init(int width, int height)
     };
     g_disp = lvgl_port_add_disp_dsi(&disp_cfg, &dsi_disp_cfg);
 
-    gpio_config_t bk_cfg = {
-        .pin_bit_mask = 1ULL << PIN_BACKLIGHT,
-        .mode         = GPIO_MODE_OUTPUT,
+    /* Backlight via LEDC PWM so motion dimming can fade it. */
+    ledc_timer_config_t bk_timer = {
+        .speed_mode      = LEDC_LOW_SPEED_MODE,
+        .duty_resolution = LEDC_TIMER_10_BIT,
+        .timer_num       = LEDC_TIMER_0,
+        .freq_hz         = 1000,
+        .clk_cfg         = LEDC_AUTO_CLK,
     };
-    ESP_ERROR_CHECK(gpio_config(&bk_cfg));
-    gpio_set_level(PIN_BACKLIGHT, 1);
+    ESP_ERROR_CHECK(ledc_timer_config(&bk_timer));
+    ledc_channel_config_t bk_chan = {
+        .gpio_num   = PIN_BACKLIGHT,
+        .speed_mode = LEDC_LOW_SPEED_MODE,
+        .channel    = LEDC_CHANNEL_0,
+        .timer_sel  = LEDC_TIMER_0,
+        .duty       = 1023,
+        .hpoint     = 0,
+    };
+    ESP_ERROR_CHECK(ledc_channel_config(&bk_chan));
+    ESP_ERROR_CHECK(ledc_fade_func_install(0));
 
     ESP_LOGI(TAG, "display ready (%dx%d)", width, height);
+}
+
+void display_set_brightness(int percent)
+{
+    if (percent < 1) percent = 1;       /* keep the boost converter alive */
+    if (percent > 100) percent = 100;
+    uint32_t duty = (1023u * percent) / 100;
+    ledc_set_fade_time_and_start(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0,
+                                 duty, 600, LEDC_FADE_NO_WAIT);
 }

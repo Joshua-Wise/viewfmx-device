@@ -27,4 +27,22 @@ menu "viewFMX Device"
             Meeting times arrive as UTC and are rendered in this zone.
             Default is US Central (Celina ISD).
 
+    config VIEWFMX_MOTION_DIM
+        bool "Dim display when no motion (bezel camera)"
+        default y
+        help
+            Uses the MIPI-CSI camera for presence detection and fades the
+            backlight after a period without motion or touch.
+
+    config VIEWFMX_DIM_TIMEOUT_S
+        int "Seconds of no motion/touch before dimming"
+        depends on VIEWFMX_MOTION_DIM
+        default 600
+
+    config VIEWFMX_DIM_LEVEL
+        int "Dimmed brightness (percent)"
+        depends on VIEWFMX_MOTION_DIM
+        range 1 100
+        default 15
+
 endmenu

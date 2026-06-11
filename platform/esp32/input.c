@@ -22,6 +22,13 @@
 
 static const char *TAG = "input";
 
+static i2c_master_bus_handle_t g_i2c_bus;
+
+i2c_master_bus_handle_t input_get_i2c_bus(void)
+{
+    return g_i2c_bus;
+}
+
 static void scan_bus(i2c_master_bus_handle_t bus)
 {
     int found = 0;
@@ -79,6 +86,7 @@ void input_init(void)
         ESP_LOGE(TAG, "i2c bus init failed; touch disabled");
         return;
     }
+    g_i2c_bus = i2c_bus;
 
     scan_bus(i2c_bus);
 

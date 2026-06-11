@@ -18,6 +18,7 @@
 #include "platform/esp32/display.h"
 #include "platform/esp32/input.h"
 #include "platform/esp32/net.h"
+#include "platform/esp32/motion.h"
 #include "platform/sysinfo.h"
 
 #define DISPLAY_WIDTH  1024
@@ -63,4 +64,8 @@ void app_main(void)
     lvgl_port_lock(0);
     gui_init(&g_provider, resource_id, building_id);
     lvgl_port_unlock();
+
+#if CONFIG_VIEWFMX_MOTION_DIM
+    motion_init();
+#endif
 }
