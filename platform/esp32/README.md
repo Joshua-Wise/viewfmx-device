@@ -1,46 +1,41 @@
-# ESP32-P4 Port Layer — STUB (NOT YET IMPLEMENTED)
+# ESP32-P4 Port Layer
 
-This directory is intentionally empty. It is the port layer for the
-Guition JC1060P470C (ESP32-P4, 1024×600, capacitive touch, wired Ethernet).
+Port layer for the Guition JC1060P470C (ESP32-P4, 7″ 1024×600 MIPI-DSI,
+capacitive touch). The ESP-IDF project that builds this lives in
+`/esp32` at the repo root; this directory holds only the platform
+driver sources, mirroring `platform/sdl/`.
 
-When the hardware arrives, implement the following, keeping the same
-function signatures as the SDL equivalents in `platform/sdl/`:
+## Hardware map (JC1060P470C)
 
-## Files to create
+| Function        | Detail                                        |
+|-----------------|-----------------------------------------------|
+| Display         | 7″ 1024×600 IPS, JD9165 controller, 2-lane MIPI-DSI |
+| LCD reset       | GPIO5                                         |
+| Backlight       | GPIO23 (driven as plain GPIO; PWM optional)   |
+| MIPI D-PHY power| Internal LDO channel 3 @ 2.5 V                |
+| Touch           | GT911, I2C addr 0x5D                          |
+| Touch I2C       | SDA GPIO7, SCL GPIO8 (400 kHz)                |
+| Touch INT / RST | GPIO21 / GPIO22                               |
+| PSRAM / Flash   | 32 MB hex PSRAM @ 200 MHz / 16 MB flash       |
+| Ethernet        | 100M RJ45, IP101 PHY addr 1, RST GPIO51, REF_CLK in GPIO50, MDC/MDIO GPIO31/52 (= P4 EMAC defaults) |
+| Wi-Fi (unused)  | Wi-Fi 6 via onboard ESP32-C6 over SDIO (`esp_wifi_remote`) |
 
-### `display.c` / `display.h`
-Register an `lv_display_t` backed by the ESP32-P4 RGB panel driver
-(`esp_lcd_rgb_panel`). Match the SDL signature:
-```c
-void display_init(int width, int height);
-```
+## Files
 
-### `input.c` / `input.h`
-Register an `lv_indev_t` for the capacitive touch controller (GT911
-or similar, via I2C). Match:
-```c
-void input_init(void);
-```
-
-### `net.c` / `net.h`
-Initialise the W5500/built-in Ethernet MAC and lwIP stack, or the
-ESP-IDF `esp_http_client` wrapper used by `http_provider.c`. Match:
-```c
-void net_init(void);
-void net_cleanup(void);
-```
-
-Note: `http_provider.c` currently uses **libcurl**. On ESP-IDF you
-will either port it to `esp_http_client`, or pull in a libcurl ESP-IDF
-component. The `data/` and `gui/` layers are not aware of which HTTP
-library is used — only `platform/` files change.
-
-## Build system
-The ESP32 target uses ESP-IDF's CMake build, not this project's top-level
-`CMakeLists.txt`. Create an `esp32/` ESP-IDF component that pulls in the
-`gui/` and `data/` sources and links the platform drivers.
+- `display.c` — JD9165 DSI panel via `espressif/esp_lcd_jd9165`, wired
+  into LVGL with `espressif/esp_lvgl_port` (`lvgl_port_init()` here also
+  calls `lv_init()`).
+- `input.c` — GT911 via `espressif/esp_lcd_touch_gt911`, registered with
+  `lvgl_port_add_touch()`.
+- `net.c` — wired Ethernet (internal EMAC + IP101) with DHCP; blocks up
+  to 15 s for an IP at boot, then the 60 s refresh timer retries forever.
+  The matching HTTP transport is `data/http_provider_esp.c`
+  (`esp_http_client`); JSON parsing is shared with the SDL/curl build via
+  `data/http_provider_parse.c`.
 
 ## No GoFMX credentials here
+
 Room identity (`resource_id`, `building_id`) and the viewfmx server URL
-are set at build time via Kconfig or NVS — never hardcoded. The GoFMX
-token lives exclusively in the viewfmx Docker container.
+are set via Kconfig (`idf.py menuconfig` → "viewFMX Device") — never
+hardcoded. The GoFMX token lives exclusively in the viewfmx Docker
+container.

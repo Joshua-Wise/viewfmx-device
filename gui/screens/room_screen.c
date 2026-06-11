@@ -4,6 +4,11 @@
 #include <string.h>
 #include <time.h>
 
+#ifdef ESP_PLATFORM
+/* newlib has no timegm(); see platform/esp32/compat.c */
+time_t timegm(struct tm *tm);
+#endif
+
 /* ------------------------------------------------------------------ */
 /* Widget handles                                                        */
 /* ------------------------------------------------------------------ */
