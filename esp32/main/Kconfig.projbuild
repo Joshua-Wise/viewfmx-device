@@ -1,0 +1,30 @@
+menu "viewFMX Device"
+
+    config VIEWFMX_USE_MOCK
+        bool "Use mock data provider (offline, no network)"
+        default y
+        help
+            When enabled the device shows canned room data and never
+            touches the network. Disable once Wi-Fi + the HTTP provider
+            are implemented (phase 2).
+
+    config VIEWFMX_BASE_URL
+        string "viewfmx server base URL"
+        default "https://viewfmx.celinaisd.com"
+
+    config VIEWFMX_RESOURCE_ID
+        string "Room resource ID"
+        default "0"
+
+    config VIEWFMX_BUILDING_ID
+        string "Building ID"
+        default "0"
+
+    config VIEWFMX_TZ
+        string "POSIX timezone for displayed times"
+        default "CST6CDT,M3.2.0,M11.1.0"
+        help
+            Meeting times arrive as UTC and are rendered in this zone.
+            Default is US Central (Celina ISD).
+
+endmenu

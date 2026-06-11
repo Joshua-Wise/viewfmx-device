@@ -1,8 +1,10 @@
 # viewfmx-device
 
 Native LVGL UI for conference-room signs, targeting the
-**Guition JC1060P470C** (ESP32-P4, 7″ 1024×600 IPS, capacitive touch,
-wired Ethernet). Developed and tested on macOS using the LVGL SDL simulator.
+**Guition JC1060P470C** (ESP32-P4, 7″ 1024×600 IPS MIPI-DSI, capacitive
+touch, wired 100M Ethernet via IP101 PHY; Wi-Fi 6 via onboard ESP32-C6
+also available). Developed and tested on macOS using the LVGL SDL
+simulator.
 
 The device displays the same per-room schedule data as the viewFMX iPad
 web app, fetched from the same Docker container via two JSON endpoints.
@@ -88,7 +90,8 @@ viewfmx-device/
 │   └── http_provider.*     libcurl → viewfmx /device/v1/ endpoints
 ├── platform/
 │   ├── sdl/                macOS SDL display + input + curl init
-│   └── esp32/              PORT LAYER STUB — see platform/esp32/README.md
+│   └── esp32/              JD9165 DSI display, GT911 touch, net stub
+├── esp32/                  ESP-IDF project (idf.py build / flash)
 └── vendor/cjson/           cJSON v1.7.18 (MIT, two files)
 ```
 
@@ -134,8 +137,19 @@ Returns current room state. `count` defaults to 5 upcoming meetings.
 
 ---
 
-## ESP32-P4 port (future)
+## ESP32-P4 build (Guition JC1060P470C)
 
-See `platform/esp32/README.md`. The `gui/` and `data/` layers compile
-unchanged. Only `platform/esp32/` and the ESP-IDF CMake wrapper need to
-be written.
+Requires ESP-IDF v5.3+ (`. ~/esp/esp-idf/export.sh`). The `gui/` and
+`data/` layers compile unchanged; hardware details live in
+`platform/esp32/README.md`.
+
+```bash
+cd esp32
+idf.py set-target esp32p4
+idf.py menuconfig          # "viewFMX Device" → room IDs, server URL
+idf.py -p /dev/cu.usbmodem* flash monitor
+```
+
+The device boots with wired Ethernet (DHCP) and, unless
+`VIEWFMX_USE_MOCK` is enabled in menuconfig, fetches live data from the
+viewfmx server with `esp_http_client`.

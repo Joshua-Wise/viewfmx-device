@@ -2,3 +2,6 @@ build/
 .DS_Store
 *.o
 *.a
+esp32/managed_components/
+esp32/sdkconfig
+esp32/sdkconfig.old
