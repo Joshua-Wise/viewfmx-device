@@ -59,7 +59,6 @@ static char g_building_id[32];
 #define CLR_TEXT_SOFT   lv_color_hex(0xD1D5DB)   /* on dark backgrounds   */
 #define CLR_WHITE       lv_color_hex(0xFFFFFF)
 #define CLR_BLUE        lv_color_hex(0x3B82F6)
-#define CLR_ORANGE      lv_color_hex(0xF59E0B)
 #define CLR_CANCEL_BG   lv_color_hex(0xE5E7EB)
 
 #define HEADER_H  96
@@ -316,8 +315,7 @@ void room_screen_create(ViewFMX_DataProvider *provider,
     lv_obj_set_size(btn_book, 72, 72);
     lv_obj_set_style_radius(btn_book, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_bg_color(btn_book, CLR_WHITE, 0);
-    lv_obj_set_style_border_color(btn_book, CLR_ORANGE, 0);
-    lv_obj_set_style_border_width(btn_book, 3, 0);
+    lv_obj_set_style_border_width(btn_book, 0, 0);
     lv_obj_set_style_shadow_width(btn_book, 0, 0);
     lv_obj_add_flag(btn_book, LV_OBJ_FLAG_FLOATING);
     lv_obj_align(btn_book, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
