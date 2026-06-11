@@ -26,8 +26,8 @@ static lv_obj_t *panel_current;
 static lv_obj_t *lbl_cur_hdr;        /* "Current meeting" (hidden when free) */
 static lv_obj_t *lbl_cur_title;      /* meeting title, or "Available"        */
 static lv_obj_t *lbl_cur_time;       /* "Wed Jun 11  1:00 PM - 4:00 PM"      */
-static lv_obj_t *btn_book_30;
-static lv_obj_t *btn_book_60;
+static lv_obj_t *btn_book;           /* floating "+", shown when free        */
+static lv_obj_t *g_book_modal;
 
 /* Right panel: next meeting */
 static lv_obj_t *panel_next;
@@ -59,6 +59,8 @@ static char g_building_id[32];
 #define CLR_TEXT_SOFT   lv_color_hex(0xD1D5DB)   /* on dark backgrounds   */
 #define CLR_WHITE       lv_color_hex(0xFFFFFF)
 #define CLR_BLUE        lv_color_hex(0x3B82F6)
+#define CLR_ORANGE      lv_color_hex(0xF59E0B)
+#define CLR_CANCEL_BG   lv_color_hex(0xE5E7EB)
 
 #define HEADER_H  96
 #define BOTTOM_H  150
@@ -141,9 +143,24 @@ static void logo_cb(lv_event_t *e)
     settings_overlay_open(g_provider, g_resource_id, g_building_id);
 }
 
+static void book_modal_close(void)
+{
+    if (g_book_modal) {
+        lv_obj_delete(g_book_modal);
+        g_book_modal = NULL;
+    }
+}
+
+static void book_cancel_cb(lv_event_t *e)
+{
+    (void)e;
+    book_modal_close();
+}
+
 static void book_cb(lv_event_t *e)
 {
     int minutes = (int)(intptr_t)lv_event_get_user_data(e);
+    book_modal_close();
     if (g_provider->book_room(g_provider->ctx, minutes) == 0) {
         /* Refresh to show new booking */
         ViewFMX_RoomData data = {0};
@@ -151,6 +168,65 @@ static void book_cb(lv_event_t *e)
             room_screen_update(&data);
         }
     }
+}
+
+static lv_obj_t *make_modal_btn(lv_obj_t *parent, const char *txt,
+                                lv_color_t bg, lv_color_t fg)
+{
+    lv_obj_t *btn = lv_btn_create(parent);
+    lv_obj_set_style_bg_color(btn, bg, 0);
+    lv_obj_set_style_radius(btn, 8, 0);
+    lv_obj_set_style_shadow_width(btn, 0, 0);
+    lv_obj_t *l = lv_label_create(btn);
+    lv_obj_set_style_text_font(l, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(l, fg, 0);
+    lv_label_set_text(l, txt);
+    lv_obj_center(l);
+    return btn;
+}
+
+static void book_open_cb(lv_event_t *e)
+{
+    (void)e;
+    if (g_book_modal) return;
+
+    g_book_modal = lv_obj_create(lv_layer_top());
+    lv_obj_set_size(g_book_modal, 1024, 600);
+    lv_obj_set_style_bg_color(g_book_modal, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(g_book_modal, LV_OPA_50, 0);
+    lv_obj_set_style_border_width(g_book_modal, 0, 0);
+    lv_obj_set_style_radius(g_book_modal, 0, 0);
+    lv_obj_clear_flag(g_book_modal, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t *card = lv_obj_create(g_book_modal);
+    lv_obj_set_size(card, 560, 236);
+    lv_obj_center(card);
+    lv_obj_set_style_bg_color(card, CLR_WHITE, 0);
+    lv_obj_set_style_radius(card, 16, 0);
+    lv_obj_set_style_border_width(card, 0, 0);
+    lv_obj_set_style_pad_all(card, 24, 0);
+    lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t *title = lv_label_create(card);
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(title, CLR_TEXT_DARK, 0);
+    lv_label_set_text(title, "Schedule a Quick Meeting:");
+    lv_obj_align(title, LV_ALIGN_TOP_LEFT, 0, 0);
+
+    lv_obj_t *b30 = make_modal_btn(card, "30 Minutes", CLR_BLUE, CLR_WHITE);
+    lv_obj_set_size(b30, 246, 56);
+    lv_obj_align(b30, LV_ALIGN_TOP_LEFT, 0, 48);
+    lv_obj_add_event_cb(b30, book_cb, LV_EVENT_CLICKED, (void *)(intptr_t)30);
+
+    lv_obj_t *b60 = make_modal_btn(card, "1 Hour", CLR_BLUE, CLR_WHITE);
+    lv_obj_set_size(b60, 246, 56);
+    lv_obj_align(b60, LV_ALIGN_TOP_RIGHT, 0, 48);
+    lv_obj_add_event_cb(b60, book_cb, LV_EVENT_CLICKED, (void *)(intptr_t)60);
+
+    lv_obj_t *cancel = make_modal_btn(card, "Cancel", CLR_CANCEL_BG, CLR_TEXT_MUTED);
+    lv_obj_set_size(cancel, 512, 52);
+    lv_obj_align(cancel, LV_ALIGN_TOP_LEFT, 0, 120);
+    lv_obj_add_event_cb(cancel, book_cancel_cb, LV_EVENT_CLICKED, NULL);
 }
 
 /* ------------------------------------------------------------------ */
@@ -234,30 +310,21 @@ void room_screen_create(ViewFMX_DataProvider *provider,
     lv_obj_set_width(lbl_cur_title, 464);
     lbl_cur_time = make_label(panel_current, &lv_font_montserrat_20, CLR_TEXT_SOFT);
 
-    lv_obj_t *btn_row = lv_obj_create(panel_current);
-    lv_obj_set_size(btn_row, 464, 64);
-    lv_obj_set_style_bg_opa(btn_row, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(btn_row, 0, 0);
-    lv_obj_set_style_pad_all(btn_row, 0, 0);
-    lv_obj_clear_flag(btn_row, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_flex_flow(btn_row, LV_FLEX_FLOW_ROW);
-    lv_obj_set_style_pad_column(btn_row, 16, 0);
-
-    btn_book_30 = lv_btn_create(btn_row);
-    lv_obj_set_size(btn_book_30, 170, 56);
-    lv_obj_set_style_bg_color(btn_book_30, CLR_BLUE, 0);
-    lv_obj_add_event_cb(btn_book_30, book_cb, LV_EVENT_CLICKED, (void *)(intptr_t)30);
-    lv_obj_t *lbl30 = make_label(btn_book_30, &lv_font_montserrat_20, CLR_WHITE);
-    lv_label_set_text(lbl30, "Book 30 min");
-    lv_obj_center(lbl30);
-
-    btn_book_60 = lv_btn_create(btn_row);
-    lv_obj_set_size(btn_book_60, 170, 56);
-    lv_obj_set_style_bg_color(btn_book_60, CLR_BLUE, 0);
-    lv_obj_add_event_cb(btn_book_60, book_cb, LV_EVENT_CLICKED, (void *)(intptr_t)60);
-    lv_obj_t *lbl60 = make_label(btn_book_60, &lv_font_montserrat_20, CLR_WHITE);
-    lv_label_set_text(lbl60, "Book 60 min");
-    lv_obj_center(lbl60);
+    /* Floating "+" booking button (web-app style), bottom-right of the
+     * current panel; ignored by the flex layout. */
+    btn_book = lv_btn_create(panel_current);
+    lv_obj_set_size(btn_book, 72, 72);
+    lv_obj_set_style_radius(btn_book, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(btn_book, CLR_WHITE, 0);
+    lv_obj_set_style_border_color(btn_book, CLR_ORANGE, 0);
+    lv_obj_set_style_border_width(btn_book, 3, 0);
+    lv_obj_set_style_shadow_width(btn_book, 0, 0);
+    lv_obj_add_flag(btn_book, LV_OBJ_FLAG_FLOATING);
+    lv_obj_align(btn_book, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
+    lv_obj_add_event_cb(btn_book, book_open_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *lbl_plus = make_label(btn_book, &lv_font_montserrat_32, CLR_TEXT_DARK);
+    lv_label_set_text(lbl_plus, LV_SYMBOL_PLUS);
+    lv_obj_center(lbl_plus);
 
     /* ---- Right: next meeting ---- */
     panel_next = make_panel(g_screen, CLR_PANEL_MED);
@@ -317,14 +384,12 @@ void room_screen_update(const ViewFMX_RoomData *data)
         snprintf(buf, sizeof(buf), "%s   %s", date, range);
         lv_label_set_text(lbl_cur_time, buf);
 
-        lv_obj_add_flag(btn_book_30, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(btn_book_60, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(btn_book, LV_OBJ_FLAG_HIDDEN);
     } else {
         lv_label_set_text(lbl_cur_hdr, "");
         lv_label_set_text(lbl_cur_title, "Available");
         lv_label_set_text(lbl_cur_time, "");
-        lv_obj_remove_flag(btn_book_30, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_remove_flag(btn_book_60, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_remove_flag(btn_book, LV_OBJ_FLAG_HIDDEN);
     }
 
     /* Right panel: first upcoming meeting */
