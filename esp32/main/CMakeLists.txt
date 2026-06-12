@@ -16,6 +16,7 @@ idf_component_register(
         "${REPO_ROOT}/platform/esp32/net.c"
         "${REPO_ROOT}/platform/esp32/sysinfo.c"
         "${REPO_ROOT}/platform/esp32/motion.c"
+        "${REPO_ROOT}/platform/esp32/fetcher.c"
     INCLUDE_DIRS
         "."
         "${REPO_ROOT}"

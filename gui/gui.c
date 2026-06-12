@@ -15,6 +15,9 @@ static void refresh_timer_cb(lv_timer_t *t)
     ViewFMX_RoomData data = {0};
     if (g_provider->fetch_status(g_provider->ctx, &data) == 0) {
         room_screen_update(&data);
+        room_screen_set_offline(false);
+    } else {
+        room_screen_set_offline(true);
     }
 }
 
@@ -32,10 +35,16 @@ void gui_init(ViewFMX_DataProvider *provider,
     ViewFMX_RoomData data = {0};
     if (provider->fetch_status(provider->ctx, &data) == 0) {
         room_screen_update(&data);
+    } else {
+        room_screen_set_offline(true);
     }
 
-    /* Refresh every 60 seconds */
+#ifndef ESP_PLATFORM
+    /* Refresh every 60 seconds. On the ESP32 the platform fetcher task
+     * does this instead — network I/O must never run in the LVGL task,
+     * or a hung connection freezes the whole UI. */
     g_refresh_timer = lv_timer_create(refresh_timer_cb, 60000, NULL);
+#endif
 }
 
 void gui_tick(void)

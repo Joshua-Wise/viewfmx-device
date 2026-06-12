@@ -105,16 +105,36 @@ static void motion_task(void *arg)
     int current_brightness = 100;
     s_last_motion_us = esp_timer_get_time();
 
+    int starved = 0;
     while (1) {
         struct v4l2_buffer buf = {
             .type   = V4L2_BUF_TYPE_VIDEO_CAPTURE,
             .memory = V4L2_MEMORY_MMAP,
         };
         if (ioctl(fd, VIDIOC_DQBUF, &buf) != 0) {
-            ESP_LOGW(TAG, "DQBUF failed; stopping motion detection");
-            display_set_brightness(100);
-            vTaskDelete(NULL);
+            /* Non-blocking: no frame ready (or a transient driver error).
+             * Never park forever and never die — after ~30 s without
+             * frames, bounce the stream and carry on. */
+            if (++starved >= 60) {
+                ESP_LOGW(TAG, "no camera frames for 30s; restarting stream");
+                int type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+                ioctl(fd, VIDIOC_STREAMOFF, &type);
+                for (int i = 0; i < CAM_BUF_COUNT; i++) {
+                    struct v4l2_buffer rb = {
+                        .type   = V4L2_BUF_TYPE_VIDEO_CAPTURE,
+                        .memory = V4L2_MEMORY_MMAP,
+                        .index  = i,
+                    };
+                    ioctl(fd, VIDIOC_QBUF, &rb);
+                }
+                ioctl(fd, VIDIOC_STREAMON, &type);
+                display_set_brightness(100);
+                starved = 0;
+            }
+            vTaskDelay(pdMS_TO_TICKS(FRAME_INTERVAL_MS));
+            continue;
         }
+        starved = 0;
 
         /* Frame is DMA-written PSRAM; drop stale cache lines first. */
         esp_cache_msync(s_bufs[buf.index].start, s_bufs[buf.index].len,
@@ -163,7 +183,7 @@ void motion_init(void)
         return;
     }
 
-    int fd = open(CAM_DEV, O_RDONLY);
+    int fd = open(CAM_DEV, O_RDONLY | O_NONBLOCK);
     if (fd < 0) {
         ESP_LOGW(TAG, "camera device open failed; dimming disabled");
         return;

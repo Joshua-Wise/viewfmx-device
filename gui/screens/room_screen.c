@@ -18,6 +18,7 @@ static lv_obj_t *g_screen;
 
 /* Header */
 static lv_obj_t *lbl_room_name;
+static lv_obj_t *pill_offline;
 
 LV_IMAGE_DECLARE(img_district_logo);
 
@@ -59,6 +60,7 @@ static char g_building_id[32];
 #define CLR_TEXT_SOFT   lv_color_hex(0xD1D5DB)   /* on dark backgrounds   */
 #define CLR_WHITE       lv_color_hex(0xFFFFFF)
 #define CLR_BLUE        lv_color_hex(0x3B82F6)
+#define CLR_AMBER       lv_color_hex(0xD97706)
 #define CLR_CANCEL_BG   lv_color_hex(0xE5E7EB)
 
 #define HEADER_H  96
@@ -289,6 +291,18 @@ void room_screen_create(ViewFMX_DataProvider *provider,
     lv_label_set_text(lbl_room_name, "Loading...");
     lv_obj_align(lbl_room_name, LV_ALIGN_LEFT_MID, 4, 2);
 
+    pill_offline = lv_obj_create(header);
+    lv_obj_set_size(pill_offline, 130, 40);
+    lv_obj_set_style_bg_color(pill_offline, CLR_AMBER, 0);
+    lv_obj_set_style_radius(pill_offline, 20, 0);
+    lv_obj_set_style_border_width(pill_offline, 0, 0);
+    lv_obj_clear_flag(pill_offline, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(pill_offline, LV_ALIGN_RIGHT_MID, -300, 0);
+    lv_obj_t *lbl_off = make_label(pill_offline, &lv_font_montserrat_16, CLR_WHITE);
+    lv_label_set_text(lbl_off, LV_SYMBOL_WARNING " OFFLINE");
+    lv_obj_center(lbl_off);
+    lv_obj_add_flag(pill_offline, LV_OBJ_FLAG_HIDDEN);
+
     lv_obj_t *logo = lv_image_create(header);
     lv_image_set_src(logo, &img_district_logo);
     lv_obj_align(logo, LV_ALIGN_RIGHT_MID, 0, 0);
@@ -423,5 +437,15 @@ void room_screen_update(const ViewFMX_RoomData *data)
             lv_label_set_text(lbl_bot_date[i], "");
             lv_label_set_text(lbl_bot_time[i], "");
         }
+    }
+}
+
+void room_screen_set_offline(bool offline)
+{
+    if (!pill_offline) return;
+    if (offline) {
+        lv_obj_remove_flag(pill_offline, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_add_flag(pill_offline, LV_OBJ_FLAG_HIDDEN);
     }
 }
